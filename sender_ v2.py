@@ -5,7 +5,7 @@ import socket
 import time
 import _thread
 import os
-import random 
+import random
 
 PORT = 3000
 HOST = '10.0.0.2'
@@ -27,11 +27,11 @@ filesize = os.path.getsize(file)
 
 socket_lock = _thread.allocate_lock()
 control1 = True
-control2 = True  
-control3 = True 
+control2 = True
+control3 = True
 
 base = random.getrandbits(14)
-activated_sending_threads = 0 
+activated_sending_threads = 0
 
 socket_recv = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 socket_send = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
@@ -61,17 +61,17 @@ def get_packet_default (seq_number):
         data_read = file.read(PACKET_DATA_SIZE)
     except:
         pprint("File exhausted")
-        activated_sending_threads -= 1 
-        control2 = True 
+        activated_sending_threads -= 1
+        control2 = True
         return None
-    else: 
+    else:
         pckt = custom_packet(seq_number , 0, 0  , data_read, PACKET_DATA_SIZE )
         return pckt
 
 def conn_est():
     global control1 , socket_send , base , HOST , PORT
     p = get_packet_special(1,0,base)
-    base += 1 
+    base += 1
     socket_send.sendto(p.get_string() , (HOST,PORT))
     start_time = time.time()
     _thread.start_new_thread(conn_est_timer , (p , start_time ,))
@@ -82,15 +82,15 @@ def conn_est():
         rcv_seq = int(message[1])
         rcv_syn = int(message[3])
         rcv_fin = int(message[5])
-        if rcv_syn ==1 :           
-            control1 = True 
+        if rcv_syn ==1 :
+            control1 = True
             return True
         else:
-            control1 = True 
-            return False 
-             
+            control1 = True
+            return False
+
 def conn_est_timer(pckt, start_time):
-    global control1 , socket_send , TIMEOUT  
+    global control1 , socket_send , TIMEOUT
     while control1 != True:
         if time.time - start_time > TIMEOUT:
             socket_send.sendto( pckt.get_string() , (HOST,PORT))
@@ -106,18 +106,18 @@ def sender(id) :
             socket_send.sendto ( list_pack(list_seq(id)).to_string() )
             socket_lock.release()
             time.sleep(TIMEOUT)
-    return 
+    return
 
 def  sender_main() :
-    global base , WINDOW_SIZE , activated_sending_threads , list_pack , list_seq 
+    global base , WINDOW_SIZE , activated_sending_threads , list_pack , list_seq
     for i in range(WINDOW_SIZE):
         pckt = get_packet_default(0,0,base)
         activated_sending_threads += 1
         list_pack[base] = pckt
         list_seq[i+1] = base
         _thread.start_new_thread(sender, (i+1))
-        base += 1 
-    return 
+        base += 1
+    return
 
 def recv():
     global list_pack , list_seq, control2 , base  ,  activated_sending_threads
@@ -131,21 +131,21 @@ def recv():
         if rcv_seq in list_seq.values():
             update_thread_id = list(list_seq.values()).index(seq)
             update_thread_id += 1
-            if control2 == True: 
+            if control2 == True:
                 list_pack.update(rcv_seq:None)
                 activated_sending_threads -= 1
             else:
                 new_pckt = get_packet_default(base)
                 list_pack[base] = new_pckt
                 list_seq.update(update_thread_id:base)
-                base += 1 
+                base += 1
         if activated_sending_threads == 0 :
-            return 
+            return
 
 def conn_end():
-    global control1 , socket_send , base  , HOST , PORT , control3 
+    global control1 , socket_send , base  , HOST , PORT , control3
     p = get_packet_special(0,1,base)
-    base += 1 
+    base += 1
     socket_send.sendto( p.get_string() , (HOST,PORT))
     start_time = time.time()
     _thread.start_new_thread(conn_end_timer , (p , start_time ,))
@@ -156,12 +156,12 @@ def conn_end():
         rcv_seq = int(message[1])
         rcv_syn = int(message[3])
         rcv_fin = int(message[5])
-        if rcv_fin ==1 :        
-            control3 = True 
-            return True 
-             
+        if rcv_fin ==1 :
+            control3 = True
+            return True
+
 def conn_end_timer(p , start_time):
-    global control3 , socket_send , TIMEOUT  
+    global control3 , socket_send , TIMEOUT
     while control3 != True:
         if time.time - start_time > TIMEOUT:
             socket_send.sendto( p.get_string() , (HOST,PORT))
@@ -177,14 +177,14 @@ def main_fn () :
         return
     send_time_start = time.time()
     sender_main()
-    recv() 
+    recv()
     send_time_end = time.time()
     if activated_sending_threads == 0:
         conn_end
     else:
         pprint("Incorrect connection termination")
-    time_taken = send_time_end - send_time_start 
+    time_taken = send_time_end - send_time_start
     pprint(time_taken)
-    return 
+    return
 
 main_fn()
