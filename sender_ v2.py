@@ -131,12 +131,12 @@ def recv():
             update_thread_id = list(list_seq.values()).index(seq)
             update_thread_id += 1
             if control2 == True:
-                list_pack.update(rcv_seq:None)
+                list_pack[rcv_seq]= None
                 activated_sending_threads -= 1
             else:
                 new_pckt = get_packet_default(base)
                 list_pack[base] = new_pckt
-                list_seq.update(update_thread_id:base)
+                list_seq[update_thread_id] = base
                 base += 1
         if activated_sending_threads == 0 :
             return
