@@ -6,7 +6,7 @@ import _thread
 import os
 from traceback import print_list
 
-PORT = 9000
+PORT = 9900
 REMOTE = '127.0.0.2'
 LOCAL = '127.0.0.1'
 BUFFER_SIZE = 1024
@@ -41,12 +41,13 @@ def recv():
     global recieved_data , base , REMOTE , PORT
     while True:
         rcvd_pckt , _ = socket_recv.recvfrom(BUFFER_SIZE)
-        message = rcvd_pckt.decode().split(':')
+        message = rcvd_pckt.decode("latin-1").split(':')
+        print(message)
         rcv_seq = int(message[1])
         rcv_syn = int(message[5])
         rcv_fin = int(message[7])
         begin_data = len(message[0]) + len(message[1]) + len(message[2]) + len(message[3]) + len(message[4]) + len(message[5]) + len(message[6]) + len(message[7]) + len(message[8]) + 9
-        data_rcv = message[begin_data:]
+        data_rcv = rcvd_pckt[begin_data:]
         if rcv_syn == 1:
             print("Connection establishing")
             base = rcv_seq 
@@ -58,6 +59,7 @@ def recv():
             socket_send.sendto(pk2.get_string() , (REMOTE ,PORT ))
             return 
         else:
+            print("data_recieved")
             pk3 = custom_packet(rcv_seq , 0, 0)
             socket_send.sendto(pk3.get_string() , (REMOTE, PORT ))
             if (rcv_seq - base) not in recieved_data.keys() :
