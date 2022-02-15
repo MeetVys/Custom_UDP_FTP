@@ -5,7 +5,7 @@ import time
 import _thread
 import os
 
-PORT = 3000
+PORT = 9000
 REMOTE = '10.0.0.2'
 LOCAL = '10.0.0.1'
 BUFFER_SIZE = 1024
