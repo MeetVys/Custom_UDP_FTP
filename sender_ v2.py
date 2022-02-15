@@ -1,6 +1,4 @@
-import imp
 from pprint import pprint
-from pydoc import cli
 import socket
 import time
 import _thread
@@ -8,7 +6,8 @@ import os
 import random
 
 PORT = 3000
-HOST = '10.0.0.2'
+REMOTE = '10.0.0.1'
+LOCAL = '10.0.0.2''
 BUFFER_SIZE = 1024
 PACKET_DATA_SIZE = 1024
 WINDOW_SIZE = 10
@@ -69,10 +68,10 @@ def get_packet_default (seq_number):
         return pckt
 
 def conn_est():
-    global control1 , socket_send , base , HOST , PORT
+    global control1 , socket_send , base , REMOTE , PORT
     p = get_packet_special(1,0,base)
     base += 1
-    socket_send.sendto(p.get_string() , (HOST,PORT))
+    socket_send.sendto(p.get_string() , (REMOTE,PORT))
     start_time = time.time()
     _thread.start_new_thread(conn_est_timer , (p , start_time ,))
     while True:
@@ -90,10 +89,10 @@ def conn_est():
             return False
 
 def conn_est_timer(pckt, start_time):
-    global control1 , socket_send , TIMEOUT
+    global control1 , socket_send , TIMEOUT , REMOTE , PORT
     while control1 != True:
         if time.time - start_time > TIMEOUT:
-            socket_send.sendto( pckt.get_string() , (HOST,PORT))
+            socket_send.sendto( pckt.get_string() , (REMOTE,PORT))
             start_time = time.time()
     return
 
@@ -143,10 +142,10 @@ def recv():
             return
 
 def conn_end():
-    global control1 , socket_send , base  , HOST , PORT , control3
+    global control1 , socket_send , base  , REMOTE , PORT , control3
     p = get_packet_special(0,1,base)
     base += 1
-    socket_send.sendto( p.get_string() , (HOST,PORT))
+    socket_send.sendto( p.get_string() , (REMOTE,PORT))
     start_time = time.time()
     _thread.start_new_thread(conn_end_timer , (p , start_time ,))
     while True:
@@ -164,7 +163,7 @@ def conn_end_timer(p , start_time):
     global control3 , socket_send , TIMEOUT
     while control3 != True:
         if time.time - start_time > TIMEOUT:
-            socket_send.sendto( p.get_string() , (HOST,PORT))
+            socket_send.sendto( p.get_string() , (REMOTE,PORT))
             start_time = time.time()
     return
 

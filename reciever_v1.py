@@ -6,7 +6,8 @@ import _thread
 import os
 
 PORT = 3000
-HOST = '10.0.0.2'
+REMOTE = '10.0.0.2'
+LOCAL = '10.0.0.1'
 BUFFER_SIZE = 1024
 PACKET_DATA_SIZE = 1024
 WINDOW_SIZE = 10
@@ -32,10 +33,11 @@ file = open("m1.txt", "w")
 
 
 socket_recv = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+socket_recv.bind(LOCAL, PORT)
 socket_send = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 
 def recv():
-    global recieved_data , base 
+    global recieved_data , base , REMOTE , PORT
     while True:
         rcvd_pckt , _ = socket_recv.recvfrom(BUFFER_SIZE)
         message = rcvd_pckt.decode().split(':')
@@ -47,14 +49,14 @@ def recv():
         if rcv_syn == 1:
             base = rcv_seq 
             pk1 = custom_packet(rcv_seq , 1 , 0 )
-            socket_send.sendto(pk1.get_string() , (HOST,PORT ))
+            socket_send.sendto(pk1.get_string() , (REMOTE ,PORT ))
         elif rcv_fin == 1:
             pk2 = custom_packet(rcv_seq , 0 , 1)
-            socket_send.sendto(pk2.get_string() , (HOST,PORT ))
+            socket_send.sendto(pk2.get_string() , (REMOTE ,PORT ))
             return 
         else:
             pk3 = custom_packet(rcv_seq , 0, 0)
-            socket_send.sendto(pk3.get_string() , (HOST,PORT ))
+            socket_send.sendto(pk3.get_string() , (REMOTE, PORT ))
             if (rcv_seq - base) not in recieved_data.keys() :
                 recieved_data[rcv_seq - base] = data_rcv 
 
