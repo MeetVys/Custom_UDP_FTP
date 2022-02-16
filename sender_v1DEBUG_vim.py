@@ -1,6 +1,4 @@
-from pickle import NONE
 from pprint import pprint
-from re import U
 import socket
 import time
 import _thread
@@ -11,7 +9,7 @@ PORT = 5507
 REMOTE = '10.0.0.1'
 LOCAL = '10.0.0.2'
 BUFFER_SIZE = 4096
-PACKET_DATA_SIZE = 1024
+PACKET_DATA_SIZE = 2048
 WINDOW_SIZE = 1000
 TIMEOUT =  0.01
 #list of size window , stores the packets that are currenty being transmitted
@@ -213,10 +211,13 @@ def conn_end():
         else :
             control3 = False
             return False
+
 def conn_end_timer(p , start_time):
     global control3 , socket_send , TIMEOUT
-    while control3:
+    counter = 0 
+    while control3 and counter <= 10 :
         if time.time()- start_time > TIMEOUT:
+            counter +=1 
             socket_send.sendto( p.get_string() , (REMOTE,PORT))
             start_time = time.time()
     return
