@@ -37,8 +37,10 @@ socket_send = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 def time_out() :
     global control1 , control , last_recv 
     while control1: 
+        time.sleep(3)
         if time.time() - last_recv > 10 :
-            control = False 
+            control1 = False
+            control = False
             return
     return 
 
@@ -65,6 +67,7 @@ def recv():
             socket_send.sendto(pk1.get_string() , (REMOTE ,PORT ))
         elif rcv_fin == 1:
             control1 = False 
+            control = False 
             print("connection ending") 
             pk2 = custom_packet(rcv_seq , 0 , 1)
             socket_send.sendto(pk2.get_string() , (REMOTE ,PORT ))
@@ -89,6 +92,7 @@ def main_fn():
     recv()
     print("Time taken" + str(last_recv - start_time))
     write_file()
+    time.sleep(10)
     return
 
 main_fn()
