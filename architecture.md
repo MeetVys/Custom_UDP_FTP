@@ -11,9 +11,9 @@ The sender reads a file (`sample_100MB.bin`) in fixed-size chunks, wraps each ch
 │                        HIGH-LEVEL OVERVIEW                         │
 │                                                                     │
 │  ┌──────────┐     UDP Datagrams      ┌──────────┐    ┌──────────┐  │
-│  │          │  ═══════════════════>   │          │    │          │  │
-│  │  CS3543  │     (custom packets)   │ Receiver │───>│   rcv1   │  │
-│  │  100MB   │                        │          │    │ (output) │  │
+│  │ sample   │  ═══════════════════>   │          │    │          │  │
+│  │ _100MB   │     (custom packets)   │ Receiver │───>│   rcv1   │  │
+│  │ .bin     │                        │          │    │ (output) │  │
 │  │ (source) │  <═══════════════════  │          │    │          │  │
 │  └────┬─────┘     (ACK packets)      └──────────┘    └──────────┘  │
 │       │                                                             │
@@ -71,8 +71,8 @@ The localhost variant runs both sender and receiver on the same machine using tw
 │       │          (latency, loss,            │                    │
 │       │           bandwidth)                │                    │
 │       │                                     │                    │
-│  sender_v1DEBUG                       recv_v1DEBUG               │
-│     _vim.py             Port 5507        vim.py                  │
+│  mininet/                             mininet/                   │
+│    sender.py            Port 5507       receiver.py              │
 │                                                                  │
 │  Window: 1000  |  Timeout: 10ms  |  Buffer: 4096B               │
 └──────────────────────────────────────────────────────────────────┘
@@ -85,12 +85,24 @@ The localhost variant runs both sender and receiver on the same machine using tw
 | Window Size | 1000 |
 | Retransmit Timeout | 10 ms |
 
-The Mininet variant runs on a software-defined virtual network where the sender and receiver are separate virtual hosts connected through emulated links. These links can be configured with realistic latency, bandwidth limits, and packet loss. To compensate:
+The Mininet variant runs on a software-defined virtual network where the sender and receiver are separate virtual hosts connected through emulated links. These links can be configured with realistic latency, bandwidth limits, and packet loss via the included `mininet/run_network.py` topology launcher. To compensate for real network conditions:
 
 - **Window size is 5x larger** (1000 vs 200) to keep the pipe full over higher-latency links.
 - **Timeout is 10x longer** (10 ms vs 1 ms) to avoid spurious retransmissions on a slower network.
 - **Buffer size is doubled** (4096 vs 2048) to handle larger bursts without dropping packets at the socket level.
 - **The sender thread includes a try/except guard** around `sendto()` calls, gracefully handling socket errors that can occur in Mininet's virtual network stack (the localhost version omits this since loopback sockets don't fail).
+
+The Mininet code is structured as a Python package under `mininet/`:
+
+```
+mininet/
+├── packet.py          Shared Packet class (serialization & parsing)
+├── sender.py          Sender class — connect(), _spawn_window(), _ack_loop(), disconnect()
+├── receiver.py        Receiver class — listen(), write_file()
+└── run_network.py     Mininet topology launcher (--bw, --delay, --loss)
+```
+
+`packet.py` provides a single `Packet` class shared by both sender and receiver, handling both wire formats (full data packets and lightweight ACKs). The sender and receiver are each wrapped in a class (`Sender` and `Receiver`) that encapsulates all socket, window, and sequence state.
 
 ### Parameter Comparison
 
@@ -132,12 +144,12 @@ Both the sender and receiver create two separate UDP sockets — one bound local
   ┌───────────────────────┐                    ┌───────────────────────┐
   │                       │                    │                       │
   │  ┌─────────────────┐  │   UDP datagrams    │  ┌─────────────────┐  │
-  │  │  socket_send     │──┼──────────────────>──┼──│  socket_recv     │  │
+  │  │  sock_send       │──┼──────────────────>──┼──│  sock_recv       │  │
   │  │  (unbound)       │  │   DATA, SYN, FIN  │  │  (bound to       │  │
   │  └─────────────────┘  │                    │  │   LOCAL:PORT)    │  │
   │                       │                    │  └─────────────────┘  │
   │  ┌─────────────────┐  │   UDP datagrams    │  ┌─────────────────┐  │
-  │  │  socket_recv     │<─┼──────────────────<──┼──│  socket_send     │  │
+  │  │  sock_recv       │<─┼──────────────────<──┼──│  sock_send       │  │
   │  │  (bound to       │  │   ACK, SYN-ACK,   │  │  (unbound)       │  │
   │  │   LOCAL:PORT)    │  │   FIN-ACK         │  └─────────────────┘  │
   │  └─────────────────┘  │                    │                       │
@@ -203,7 +215,7 @@ Before any data is sent, the sender initiates a connection using a two-way hands
 
 - The sender generates a random initial sequence number using `random.getrandbits(14)` and sends a packet with the `syn` flag set to `1`.
 - The receiver sees `syn=1`, records the sender's base sequence number, and echoes back a SYN-ACK.
-- A dedicated **retransmission timer thread** (`conn_est_timer`) continuously re-sends the SYN packet at the configured timeout interval until the SYN-ACK arrives.
+- A dedicated **retransmission timer thread** (`_retransmit_loop`) continuously re-sends the SYN packet at the configured timeout interval until the SYN-ACK arrives, at which point the `_handshake_pending` flag is flipped to stop the timer.
 
 **Retransmission on SYN loss:**
 
@@ -222,7 +234,7 @@ Before any data is sent, the sender initiates a connection using a two-way hands
         │<──────────────────────────────────────────────│
         │                                               │
    ┌────┴────┐                                          │
-   │connected│    timer thread exits (control1=False)   │
+   │connected│  timer exits (_handshake_pending=False)  │
    └─────────┘                                          │
 ```
 
@@ -246,7 +258,7 @@ Every packet carries a monotonically increasing sequence number in its header.
 
   At the receiver, data is keyed by (seq - base):
   ┌──────────────────────────────────────────────┐
-  │ recieved_data = {                            │
+  │ received_data = {                             │
   │     1: <bytes from pkt 101>,                 │
   │     2: <bytes from pkt 102>,                 │
   │     4: <bytes from pkt 104>,   ← out of order│
@@ -260,9 +272,9 @@ Every packet carries a monotonically increasing sequence number in its header.
 
 Sequence numbers serve three purposes:
 
-- **Ordering**: The receiver stores data keyed by `(seq_number - base)`, allowing reassembly in the correct order regardless of arrival sequence.
-- **Duplicate detection**: If a packet's sequence number is already in the receiver's dictionary, the data is not stored again — only a fresh ACK is sent.
-- **ACK matching**: The sender maps sequence numbers to sending threads, so when an ACK arrives, it knows which thread/packet to retire.
+- **Ordering**: The receiver stores data keyed by `(seq_number - base_seq)`, allowing reassembly in the correct order regardless of arrival sequence.
+- **Duplicate detection**: If a packet's offset is already in the receiver's `received_data` dictionary, the data is not stored again — only a fresh ACK is sent.
+- **ACK matching**: The sender maps sequence numbers to sending threads via `thread_assignments`, so when an ACK arrives, it knows which thread/packet to retire.
 
 ### 3. Sliding Window with Per-Thread Retransmission
 
@@ -271,7 +283,7 @@ The sender uses a sliding window protocol to keep multiple packets in flight sim
 ```
   ┌─────────────────────────── SENDER ──────────────────────────────┐
   │                                                                  │
-  │  sender_main() reads W chunks and spawns W threads:              │
+  │  _spawn_window() reads W chunks and spawns W threads:            │
   │                                                                  │
   │  ┌──────────┐  ┌──────────┐  ┌──────────┐       ┌──────────┐   │
   │  │ Thread 1 │  │ Thread 2 │  │ Thread 3 │  ...  │ Thread W │   │
@@ -280,7 +292,7 @@ The sender uses a sliding window protocol to keep multiple packets in flight sim
   │       │              │              │                   │         │
   │       v              v              v                   v         │
   │  ┌─────────────────────────────────────────────────────────┐     │
-  │  │              socket_send  (mutex-protected)             │     │
+  │  │              sock_send  (send_lock protected)           │     │
   │  └──────────────────────────┬──────────────────────────────┘     │
   └─────────────────────────────┼────────────────────────────────────┘
                                 │
@@ -288,41 +300,41 @@ The sender uses a sliding window protocol to keep multiple packets in flight sim
                                 │
   ┌─────────────────────────────┼──── RECEIVER ──────────────────────┐
   │                             v                                     │
-  │                      socket_recv                                  │
+  │                      sock_recv                                    │
   │                         │                                         │
   │                         v                                         │
-  │                  recv() loop                                      │
+  │                  listen() loop                                    │
   │                    │    │    │                                     │
   │                    v    v    v                                     │
   │              ACK  ACK  ACK  ...                                   │
   └───────────────────────────────────────────────────────────────────┘
 ```
 
-**Each thread's lifecycle — send/sleep/repeat:**
+**Each thread's lifecycle — send/sleep/repeat (`_sender_thread`):**
 
 ```
   Thread N:
-  ┌─────────────────────────────────────────────────────┐
-  │                                                     │
-  │  while control2 is True:                            │
-  │    while list_pack[list_seq[N]] is not None:        │
-  │      ┌──────────────┐                               │
-  │      │ acquire lock │                               │
-  │      │ send packet  │──────> to receiver            │
-  │      │ release lock │                               │
-  │      └──────┬───────┘                               │
-  │             │                                       │
-  │      ┌──────▼───────┐                               │
-  │      │sleep(TIMEOUT)│                               │
-  │      └──────┬───────┘                               │
-  │             │                                       │
-  │             └──────> loop back and send again        │
-  │                                                     │
-  │  When list_pack[seq] becomes None → thread exits    │
-  └─────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────┐
+  │                                                          │
+  │  while _transfer_active:                                 │
+  │    while packets[thread_assignments[N]] is not None:     │
+  │      ┌──────────────┐                                    │
+  │      │ acquire lock │                                    │
+  │      │ send packet  │──────> to receiver                 │
+  │      │ release lock │                                    │
+  │      └──────┬───────┘                                    │
+  │             │                                            │
+  │      ┌──────▼───────┐                                    │
+  │      │sleep(TIMEOUT)│                                    │
+  │      └──────┬───────┘                                    │
+  │             │                                            │
+  │             └──────> loop back and send again             │
+  │                                                          │
+  │  When packets[seq] becomes None → thread exits           │
+  └──────────────────────────────────────────────────────────┘
 ```
 
-**Window advancement when an ACK arrives:**
+**Window advancement when an ACK arrives (`_ack_loop`):**
 
 ```
   BEFORE ACK for seq=102:
@@ -332,11 +344,11 @@ The sender uses a sliding window protocol to keep multiple packets in flight sim
   │ sending  │ sending  │ sending  │ sending  │
   └──────────┴──────────┴──────────┴──────────┘
 
-  ACK seq=102 arrives → recv() handles it:
+  ACK seq=102 arrives → _ack_loop() handles it:
     1. Finds Thread 2 owns seq=102
     2. Reads next chunk from file → new packet seq=105
-    3. list_pack[105] = new_packet
-    4. list_seq[2] = 105          (reassign Thread 2)
+    3. packets[105] = new_packet
+    4. thread_assignments[2] = 105      (reassign Thread 2)
 
   AFTER:
   ┌──────────┬──────────┬──────────┬──────────┐
@@ -346,25 +358,25 @@ The sender uses a sliding window protocol to keep multiple packets in flight sim
   └──────────┴──────────┴──────────┴──────────┘
 ```
 
-**Key data structures on the sender:**
+**Key data structures on the sender (`Sender` class):**
 
 ```
-  list_pack (seq_number → packet):          list_seq (thread_id → seq_number):
+  packets (seq → Packet):                   thread_assignments (id → seq):
   ┌─────────┬─────────────────┐             ┌───────────┬─────────────┐
-  │ seq 101 │ custom_packet   │             │ Thread 1  │    101      │
-  │ seq 102 │ custom_packet   │             │ Thread 2  │    102      │
-  │ seq 103 │ custom_packet   │             │ Thread 3  │    103      │
-  │ seq 104 │ custom_packet   │             │ Thread 4  │    104      │
+  │ seq 101 │ Packet          │             │ Thread 1  │    101      │
+  │ seq 102 │ Packet          │             │ Thread 2  │    102      │
+  │ seq 103 │ Packet          │             │ Thread 3  │    103      │
+  │ seq 104 │ Packet          │             │ Thread 4  │    104      │
   │ ...     │ ...             │             │ ...       │    ...      │
   └─────────┴─────────────────┘             └───────────┴─────────────┘
        │                                          │
        │  When ACK received for seq 102:          │
-       │  list_pack[102] = None (retire)          │  list_seq[2] = 105
-       │  list_pack[105] = new_pkt (advance)      │  (reassign thread)
+       │  packets[102] = None (retire)            │  thread_assignments[2] = 105
+       │  packets[105] = new_pkt (advance)        │  (reassign thread)
        v                                          v
 ```
 
-A `socket_lock` mutex protects the shared send socket from concurrent thread access.
+A `send_lock` mutex protects the shared send socket from concurrent thread access.
 
 ### 4. Acknowledgments (ACKs)
 
@@ -435,7 +447,7 @@ The receiver does not require packets to arrive in order.
                          │        │        │        │        │
                          v        v        v        v        v
 
-  recieved_data dict after all arrivals:
+  received_data dict after all arrivals:
   ┌───────┬──────────────────────────────────┐
   │ key   │ value                            │
   ├───────┼──────────────────────────────────┤
@@ -461,7 +473,7 @@ The receiver does not require packets to arrive in order.
 
 ### 7. Connection Teardown (FIN / FIN-ACK)
 
-Once all data packets have been acknowledged (`activated_sending_threads == 0`), the sender initiates a clean teardown:
+Once all data packets have been acknowledged (`active_threads == 0`), the sender initiates a clean teardown via `disconnect()`:
 
 ```
       Sender                                        Receiver
@@ -471,21 +483,21 @@ Once all data packets have been acknowledged (`activated_sending_threads == 0`),
         │  FIN  (fin=1, seq=N)                          │
         │──────────────────────────────────────────────>│
         │                                               │
-        │       ┌───────────────────────────────┐       │
-        │       │ conn_end_timer thread started │       │
-        │       │ retransmits FIN on timeout    │       │
-        │       └───────────────────────────────┘       │
+        │       ┌────────────────────────────────┐      │
+        │       │ _retransmit_loop thread starts │      │
+        │       │ retransmits FIN on timeout     │      │
+        │       └────────────────────────────────┘      │
         │                                               │
         │  FIN-ACK  (fin=1, seq=N)                      │
         │<──────────────────────────────────────────────│
         │                                               │
-   ┌────┴────┐    timer stopped                  ┌──────┴──────┐
-   │  done   │    (control3=False)               │ write_file()│
-   └─────────┘                                   │ & exit      │
-                                                  └─────────────┘
+   ┌────┴────┐    timer stopped                    ┌──────┴──────┐
+   │  done   │    (_teardown_pending=False)        │ write_file()│
+   └─────────┘                                     │ & exit      │
+                                                    └─────────────┘
 ```
 
-A retransmission timer thread (`conn_end_timer`) re-sends the FIN at the timeout interval until the FIN-ACK is received, handling the case where the FIN is lost.
+A `_retransmit_loop` thread re-sends the FIN at the timeout interval until the FIN-ACK is received, handling the case where the FIN is lost.
 
 ---
 
@@ -523,7 +535,7 @@ A retransmission timer thread (`conn_end_timer`) re-sends the FIN at the timeout
   └────────────────────────────────────┘
 ```
 
-The receiver parses the header by splitting on `:`, then calculates the byte offset where the binary data begins to extract the payload without corruption.
+Both formats are handled by the shared `Packet` class in `mininet/packet.py`. On the sender side, `Packet.to_bytes()` serializes the full header + payload; on the receiver side, `Packet.parse_data_packet()` splits on `:` and calculates the byte offset where the binary data begins to extract the payload without corruption. ACKs use the lighter `to_ack_bytes()` / `parse_ack()` pair.
 
 ---
 
@@ -540,7 +552,8 @@ The receiver parses the header by splitting on `:`, then calculates the byte off
         │                                               │
   ══════╪══════════ PHASE 2: DATA TRANSFER ═════════════╪═══════
         │                                               │
-        │  sender_main() spawns W threads               │
+        │  _spawn_window() creates W threads              │
+        │  _ack_loop() starts listening                 │
         │                                               │
         │──── DATA (seq=base+1) ──────────────────────>│──ACK──>
         │──── DATA (seq=base+2) ──────────────────────>│──ACK──>
@@ -557,11 +570,11 @@ The receiver parses the header by splitting on `:`, then calculates the byte off
         │       ...                                     │
         │  [file exhausted — no more chunks to assign]  │
         │  [threads retire as final ACKs arrive]        │
-        │  [activated_sending_threads → 0]              │
+        │  [active_threads → 0]                         │
         │                                               │
   ══════╪══════════ PHASE 3: TEARDOWN ══════════════════╪═══════
         │                                               │
-        │──── FIN (fin=1) ────────────────────────────>│
+        │──── FIN (fin=1) [disconnect()] ──────────────>│
         │                                               │
         │<─── FIN-ACK (fin=1) ────────────────────────│
         │                                               │
