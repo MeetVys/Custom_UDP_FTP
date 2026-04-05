@@ -4,7 +4,7 @@
 
 This project implements a reliable file transfer protocol entirely in the application layer, using raw UDP datagrams as the transport. UDP provides no delivery guarantees, ordering, or congestion control — all of that is built from scratch here using techniques modeled after TCP.
 
-The sender reads a file (`CS3543_100MB`) in fixed-size chunks, wraps each chunk in a custom packet with a header, and pushes it over a UDP socket. The receiver collects these packets, sends back acknowledgments, and reassembles the file in sequence-number order once the transfer is complete.
+The sender reads a file (`sample_100MB.bin`) in fixed-size chunks, wraps each chunk in a custom packet with a header, and pushes it over a UDP socket. The receiver collects these packets, sends back acknowledgments, and reassembles the file in sequence-number order once the transfer is complete.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -231,7 +231,7 @@ Before any data is sent, the sender initiates a connection using a two-way hands
 Every packet carries a monotonically increasing sequence number in its header.
 
 ```
-  File: CS3543_100MB
+  File: sample_100MB.bin
   ┌────────┬────────┬────────┬────────┬────────┬─────┐
   │chunk 1 │chunk 2 │chunk 3 │chunk 4 │chunk 5 │ ... │  (1024 bytes each)
   └───┬────┴───┬────┴───┬────┴───┬────┴───┬────┴─────┘

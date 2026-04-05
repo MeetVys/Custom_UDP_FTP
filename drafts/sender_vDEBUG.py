@@ -21,7 +21,7 @@ list_pack = dict()
 # thread_number -> seq_number
 list_seq = dict()
 # list_ack = dict()
-filename = "CS3543_100MB"
+filename = "sample_100MB.bin"
 file = open( filename, "rb")
 print ("file opened")
 file_sent = False

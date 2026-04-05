@@ -25,7 +25,7 @@ BUFFER_SIZE = 4096
 CHUNK_SIZE  = 1024      # bytes of file data per packet
 WINDOW_SIZE = 1000      # concurrent in-flight packets
 TIMEOUT     = 0.01      # retransmission interval (seconds)
-SOURCE_FILE = "CS3543_100MB"
+SOURCE_FILE = "sample_100MB.bin"
 
 
 class Sender:
