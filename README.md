@@ -8,8 +8,10 @@ See [architecture.md](architecture.md) for a detailed walkthrough with diagrams.
 
 ```
 Custom_UDP_FTP/
-├── sender_v1DEBUG.py      # localhost sender
-├── recv_v1DEBUG.py        # localhost receiver
+├── localhost/
+│   ├── packet.py          # shared packet module
+│   ├── sender.py          # localhost sender
+│   └── receiver.py        # localhost receiver
 ├── mininet/
 │   ├── packet.py          # shared packet module
 │   ├── sender.py          # mininet sender
@@ -23,10 +25,20 @@ Custom_UDP_FTP/
 
 | Environment | Sender | Receiver | Network | Port |
 |---|---|---|---|---|
-| Localhost | `sender_v1DEBUG.py` | `recv_v1DEBUG.py` | `127.0.0.x` | 6666 |
+| Localhost | `localhost/sender.py` | `localhost/receiver.py` | `127.0.0.x` | 6666 |
 | Mininet | `mininet/sender.py` | `mininet/receiver.py` | `10.0.0.x` | 5507 |
 
+Both environments share the same `Packet` class (`packet.py`) for serialization and parsing.
+
 ## Usage
+
+### Prerequisites
+
+Create a test file (if `sample_100MB.bin` doesn't exist yet):
+
+```bash
+dd if=/dev/urandom of=sample_100MB.bin bs=1M count=100
+```
 
 ### Localhost
 
@@ -34,15 +46,15 @@ Start the receiver first, then the sender:
 
 ```bash
 # Terminal 1 (receiver)
-python3 recv_v1DEBUG.py
+python3 localhost/receiver.py
 
 # Terminal 2 (sender)
-python3 sender_v1DEBUG.py
+python3 localhost/sender.py
 ```
 
 ### Mininet
 
-#### Prerequisites
+#### Setup
 
 Mininet runs on **Linux** only. On macOS/Windows, use a VM (the [official Mininet VM](http://mininet.org/download/) works out of the box).
 
@@ -57,12 +69,6 @@ Mininet runs on **Linux** only. On macOS/Windows, use a VM (the [official Minine
 
    ```bash
    sudo apt install python3
-   ```
-
-3. **Create a test file** (if `sample_100MB.bin` doesn't exist yet):
-
-   ```bash
-   dd if=/dev/urandom of=sample_100MB.bin bs=1M count=100
    ```
 
 #### Running

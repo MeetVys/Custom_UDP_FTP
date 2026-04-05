@@ -39,8 +39,8 @@ Two environment-specific variants exist, tuned for different network conditions.
 │                                                             │
 │   Sender (127.0.0.2)              Receiver (127.0.0.1)     │
 │  ┌─────────────────┐             ┌─────────────────┐       │
-│  │ sender_v1DEBUG  │             │ recv_v1DEBUG    │       │
-│  │     .py         │◄──────────►│     .py          │       │
+│  │   localhost/    │             │   localhost/    │       │
+│  │   sender.py     │◄──────────►│   receiver.py   │       │
 │  └─────────────────┘  loopback   └─────────────────┘       │
 │                        Port 6666                            │
 │                                                             │
@@ -56,6 +56,17 @@ Two environment-specific variants exist, tuned for different network conditions.
 | Retransmit Timeout | 1 ms |
 
 The localhost variant runs both sender and receiver on the same machine using two loopback addresses. Because loopback has virtually zero latency and no packet loss, the window size is kept at 200 and the retransmission timeout is an aggressive 1 ms. This variant is used for functional testing and development.
+
+The localhost code lives under `localhost/`:
+
+```
+localhost/
+├── packet.py          Shared Packet class (serialization & parsing)
+├── sender.py          Sender class — connect(), _spawn_window(), _ack_loop(), disconnect()
+└── receiver.py        Receiver class — listen(), write_file()
+```
+
+Both environments share the same class-based structure and `Packet` module. The key difference is that the localhost sender omits the try/except guard in `_sender_thread` since loopback sockets don't produce send errors.
 
 ### Mininet
 
